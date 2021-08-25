@@ -1,0 +1,143 @@
+buildscript {
+    repositories {
+        maven {
+            url "https://plugins.gradle.org/m2/"
+            maven { url "http://maven.aliyun.com/nexus/content/groups/public/" }
+            maven { setUrl("https://maven.aliyun.com/repository/public/") }
+            maven { setUrl("https://maven.aliyun.com/repository/spring/") }
+        }
+    }
+    dependencies {
+        classpath "gradle.plugin.com.palantir.gradle.docker:gradle-docker:0.22.2"
+    }
+}
+
+plugins {
+    id 'java'
+    id 'java-library'
+    id "com.palantir.docker" version "0.27.0"
+    id "com.palantir.docker-run" version "0.27.0"
+    id 'application'
+    id 'org.springframework.boot' version '2.5.3'
+    id 'jacoco'
+    id "org.sonarqube" version "3.3"
+}
+
+apply plugin: 'io.spring.dependency-management'
+
+group 'org.nju'
+version '1.2'
+
+group 'org.nju'
+version '1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+
+repositories {
+    mavenCentral()
+}
+
+mainClassName = 'com.nju.WebsocketApplication'
+
+dependencies {
+    //testImplementation 'org.junit.jupiter:junit-jupiter-api:5.3.1'
+    //testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.3.1'
+
+    implementation 'junit:junit:4.13.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    implementation('org.springframework.boot:spring-boot-starter-web')
+    implementation('org.springframework.boot:spring-boot-starter-websocket')
+//    implementation('org.springframework.boot:spring-boot-starter-data-jpa')
+    compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.18.10'
+    // @see https://spring.io/projects/spring-boot
+    testCompile "org.springframework.boot:spring-boot-starter-test"
+    // https://mvnrepository.com/artifact/com.alibaba/fastjson
+    implementation group: 'com.alibaba', name: 'fastjson', version: '1.2.78'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+apply plugin: 'com.palantir.docker'
+
+docker {
+    dockerfile file('Dockerfile')
+    name 'mawei:1.2'
+    copySpec.from("build/libs").into("build/libs")
+    dependsOn tasks.jar
+}
+
+dockerRun {
+    name 'mawei-1.2-container'
+    image 'mawei:1.2'
+    command 'java', '-Djava.security.egd=file:/dev/./urandom', '-jar', 'app.jar'
+}
+
+
+String[] excludes = ['**/config/**','**/vo/**', '**/model/**','**/document/**','**/data/**','**/orm/**','**/enumeration/**','**/*Application.class','**/old/**','**/constant/**','**/controller/**','**/converter/**','**/test/**'  ]
+jacocoTestReport {
+    reports {
+        xml.enabled false
+        html.enabled true
+    }
+
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['**/controller/**','**/vo/**','**/*Application.class'])
+        }))
+    }
+}
+
+// 设置覆盖度检查的阈值
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = 0.00
+            }
+            limit {
+                counter = "BRANCH"
+                minimum = 0.00
+            }
+        }
+    }
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['**/controller/**','**/vo/**','**/*Application.class'])
+        }))
+    }
+}
+build.dependsOn jacocoTestCoverageVerification
+check.dependsOn jacocoTestReport
+
+
+/*
+/*@see https://docs.sonarqube.org/display/SCAN/Analyzing+Source+Code
+*
+* @param sonar.host.url        服务端 url 地址，扫描数据会发送到这个指定的服务端并进行展示。
+* @param sonar.login           登录使用的 token ，此值需要从指定的服务端上生成。
+*
+* 以上参数可以通过在 gradle.properties 文件中设定，也可以在命令行中通过 -D 参数设定。
+*
+* 注意事项：
+* 1. 在 gradle.properties 文件中设置参数时，需要添加 systemProp 前缀。例如：
+*    systemProp.sonar.host.url=http://localhost:9000 和
+*    systemProp.sonar.login=[token]
+        *
+        * 示例：
+* 1. ./gradlew sonarqube -Dsonar.host.url=http://localhost:9000 -Dsonar.login=55284464162a178cde63a184e623004e92538f3b
+        *
+*/
+sonarqube {
+    properties {
+        property "sonar.sourceEncoding", "UTF-8"
+        property "sonar.exclusions", "**/config/**/*.java,**/vo/**/*.java, **/model/**/*.java, **/document/**/*.java, **/data/**/*.java,**/orm/**/*.java,**/enumeration/**/*.java,**/*Application.java,**/old/**/*.java,**/controller/**/*.java,**/converter/**/*.java,**/constant/**/*.java, **/test/**/*.java"
+        property "sonar.test.exclusions", "**/*"
+    }
+}
